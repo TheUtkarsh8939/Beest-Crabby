@@ -194,7 +194,7 @@ class SlackRelay:
 		blocks = [
 			{
 				"type": "header",
-				"text": {"type": "plain_text", "text": "Project Reviewed. Congratulations!"},
+				"text": {"type": "plain_text", "text": ":tada: Project Reviewed. Congratulations!"},
 			},
 			{
 				"type": "section",
@@ -216,7 +216,7 @@ class SlackRelay:
 			{
 				"type": "context",
 				"elements": [
-					{"type": "mrkdwn", "text": "Keep up the great work and continue to refine your alchemical skills!"},
+					{"type": "mrkdwn", "text": "Keep up the great work and continue to refine your alchemical skills! :alchemize:"},
 				],
 			},
 			{
@@ -247,7 +247,7 @@ class SlackRelay:
 		blocks = [
 			{
 				"type": "header",
-				"text": {"type": "plain_text", "text": "Oof! Your project needs some changes..."},
+				"text": {"type": "plain_text", "text": ":x: Oof! Your project needs some changes..."},
 			},
 			{
 				"type": "section",
@@ -269,7 +269,7 @@ class SlackRelay:
 			{
 				"type": "context",
 				"elements": [
-					{"type": "mrkdwn", "text": "Don't give up! Review the feedback, make improvements, and ship again!"},
+					{"type": "mrkdwn", "text": "Don't give up! Review the feedback, make improvements, and ship again! :muscle:"},
 				],
 			},
 			{
