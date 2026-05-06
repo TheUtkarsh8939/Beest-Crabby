@@ -74,6 +74,29 @@ class ReviewRejectPayload(BaseModel):
 	feedback: str = Field(min_length=1, max_length=2000)
 
 
+class FulfillOrderPayload(BaseModel):
+	user_id: str = Field(min_length=1, description="Slack user ID of order recipient")
+	order_id: str = Field(min_length=1)
+	item_name: str = Field(min_length=1)
+	qty: str = Field(min_length=1)
+	cost: str = Field(min_length=1)
+
+
+class FulfillFullfilledPayload(BaseModel):
+	user_id: str = Field(min_length=1, description="Slack user ID of order recipient")
+	order_id: str = Field(min_length=1)
+	item_name: str = Field(min_length=1)
+	qty: str = Field(min_length=1)
+	cost: str = Field(min_length=1)
+	fulfilled_by: str = Field(min_length=1)
+	tracking_details: str = Field(min_length=1)
+
+
+class CustomMessagePayload(BaseModel):
+	target_id: str = Field(min_length=1, description="Slack user ID or channel ID")
+	message: str = Field(min_length=1, max_length=4000)
+
+
 class SlackDispatchResult(BaseModel):
 	ok: bool
 	channel: str
@@ -105,6 +128,84 @@ class SlackRelay:
 			signing_secret=settings.slack_signing_secret,
 		)
 		self.handler = AsyncSlackRequestHandler(self.app)
+
+	async def _resolve_target_channel(self, target_id: str) -> str:
+		if target_id.startswith("U"):
+			conv = await self.app.client.conversations_open(users=target_id)
+			return conv["channel"]["id"]
+		if target_id.startswith("C"):
+			return target_id
+		raise HTTPException(status_code=400, detail="target_id must start with U for DM or C for channel")
+
+	@staticmethod
+	def _format_order_fields(order_id: str, item_name: str, qty: str, cost: str) -> list[dict[str, str]]:
+		return [
+			{"type": "mrkdwn", "text": f"*Order ID:* {order_id}"},
+			{"type": "mrkdwn", "text": f"*Item:* {item_name}"},
+			{"type": "mrkdwn", "text": f"*Quantity:* {qty}"},
+			{"type": "mrkdwn", "text": f"*Total:* {cost}"},
+		]
+
+	async def _send_order_update_dm(
+		self,
+		user_id: str,
+		headline: str,
+		status_line: str,
+		order_id: str,
+		item_name: str,
+		qty: str,
+		cost: str,
+		closing_line: str,
+		extra_lines: list[str] | None = None,
+	) -> SlackDispatchResult:
+		channel = await self._resolve_target_channel(user_id)
+		blocks = [
+			{
+				"type": "header",
+				"text": {"type": "plain_text", "text": headline},
+			},
+			{
+				"type": "section",
+				"text": {"type": "mrkdwn", "text": f"*Your Order Status:* {status_line}"},
+			},
+			{
+				"type": "section",
+				"text": {"type": "mrkdwn", "text": "*Order Details:*"},
+				"fields": self._format_order_fields(order_id, item_name, qty, cost),
+			},
+			{
+				"type": "divider",
+			},
+			{
+				"type": "context",
+				"elements": [
+					{"type": "mrkdwn", "text": closing_line},
+					*([{"type": "mrkdwn", "text": line} for line in (extra_lines or [])]),
+				],
+			},
+		]
+
+		resp = await self.app.client.chat_postMessage(
+			channel=channel,
+			text=f"{headline} {order_id}",
+			blocks=blocks,
+		)
+
+		return SlackDispatchResult(ok=bool(resp["ok"]), channel=channel, ts=resp.get("ts"))
+
+	async def send_custom_message(self, target_id: str, message: str) -> SlackDispatchResult:
+		channel = await self._resolve_target_channel(target_id)
+		resp = await self.app.client.chat_postMessage(
+			channel=channel,
+			text=message,
+			blocks=[
+				{
+					"type": "section",
+					"text": {"type": "mrkdwn", "text": message},
+				},
+			],
+		)
+		return SlackDispatchResult(ok=bool(resp["ok"]), channel=channel, ts=resp.get("ts"))
 
 	async def send_dm(self, user_id: str, project_name: str, project_link: str) -> SlackDispatchResult:
 		# Open a DM channel with the user (conversations_open returns channel info)
@@ -207,7 +308,7 @@ class SlackRelay:
 				"type": "section",
 				"text": {
 					"type": "mrkdwn",
-					"text": f"*Acceptance Feedback:*{feedback}\n\n*You get:* {currencies}",
+					"text": f"*Acceptance Feedback:* {feedback}\n\n*You get:* {currencies}",
 				},
 			},
 			{
@@ -239,6 +340,71 @@ class SlackRelay:
 
 		return SlackDispatchResult(ok=bool(resp["ok"]), channel=channel, ts=resp.get("ts"))
 
+	async def send_fulfill_pending_dm(self, payload: FulfillOrderPayload) -> SlackDispatchResult:
+		return await self._send_order_update_dm(
+			user_id=payload.user_id,
+			headline=f":shopping_trolley: Order #{payload.order_id} Update",
+			status_line="Pending",
+			order_id=payload.order_id,
+			item_name=payload.item_name,
+			qty=payload.qty,
+			cost=payload.cost,
+			closing_line="Thanking you for participating in Alchemize with us! :alchemize:",
+			extra_lines=None,
+		)
+
+	async def send_fulfill_approved_dm(self, payload: FulfillOrderPayload) -> SlackDispatchResult:
+		return await self._send_order_update_dm(
+			user_id=payload.user_id,
+			headline=f":white_check_mark: Order #{payload.order_id} Approved!",
+			status_line="Approved. Pending Fulfillment.",
+			order_id=payload.order_id,
+			item_name=payload.item_name,
+			qty=payload.qty,
+			cost=payload.cost,
+			closing_line="We'll notify you when your order ships. Thank You for your patience! :alchemize:",
+			extra_lines=None,
+		)
+
+	async def send_fulfill_fullfilled_dm(self, payload: FulfillFullfilledPayload) -> SlackDispatchResult:
+		channel = await self._resolve_target_channel(payload.user_id)
+		blocks = [
+			{
+				"type": "header",
+				"text": {"type": "plain_text", "text": f":tada: Order #{payload.order_id} Fulfilled!"},
+			},
+			{
+				"type": "section",
+				"text": {"type": "mrkdwn", "text": "*Your Order Status:* Your order has been fulfilled and is on its way! Make sure to show off what you do with it in <#C07UMRYJ1LH> when it arrives!"},
+			},
+			{
+				"type": "section",
+				"text": {"type": "mrkdwn", "text": "*Order Details:*"},
+				"fields": self._format_order_fields(payload.order_id, payload.item_name, payload.qty, payload.cost)
+				+ [
+					{"type": "mrkdwn", "text": f"*Fulfilled By:* {payload.fulfilled_by}"},
+					{"type": "mrkdwn", "text": f"*Tracking Details:* :package: {payload.tracking_details}"},
+				],
+			},
+			{
+				"type": "divider",
+			},
+			{
+				"type": "context",
+				"elements": [
+					{"type": "mrkdwn", "text": "Thanking you for participating in Alchemize with us! :alchemize:"},
+				],
+			},
+		]
+
+		resp = await self.app.client.chat_postMessage(
+			channel=channel,
+			text=f"Order #{payload.order_id} Fulfilled!",
+			blocks=blocks,
+		)
+
+		return SlackDispatchResult(ok=bool(resp["ok"]), channel=channel, ts=resp.get("ts"))
+
 	async def send_review_dm_reject(self, user_id: str, project_name: str, project_link: str, reviewer_name: str, reviewer_id: str, feedback: str) -> SlackDispatchResult:
 		"""Send detailed rejection review to DM as mrkdwn blocks so it can be edited later."""
 		conv = await self.app.client.conversations_open(users=user_id)
@@ -260,7 +426,7 @@ class SlackRelay:
 				"type": "section",
 				"text": {
 					"type": "mrkdwn",
-					"text": f"*Rejection Feedback:*{feedback}"
+					"text": f"*Rejection Feedback:* {feedback}"
 				},
 			},
 			{
@@ -380,6 +546,42 @@ async def review_reject(
 		feedback=payload.feedback,
 	)
 	return {"ok": review_response["ok"], "channel": review_response["channel"], "ts": review_response.get("ts")}
+
+
+@app.post("/fulfill_pending")
+async def fulfill_pending(
+	payload: FulfillOrderPayload,
+	_: None = Depends(verify_bearer_token),
+) -> dict[str, Any]:
+	response = await slack_relay.send_fulfill_pending_dm(payload)
+	return {"ok": response.ok, "channel": response.channel, "ts": response.ts}
+
+
+@app.post("/fulfill_approved")
+async def fulfill_approved(
+	payload: FulfillOrderPayload,
+	_: None = Depends(verify_bearer_token),
+) -> dict[str, Any]:
+	response = await slack_relay.send_fulfill_approved_dm(payload)
+	return {"ok": response.ok, "channel": response.channel, "ts": response.ts}
+
+
+@app.post("/fulfill_fullfilled")
+async def fulfill_fullfilled(
+	payload: FulfillFullfilledPayload,
+	_: None = Depends(verify_bearer_token),
+) -> dict[str, Any]:
+	response = await slack_relay.send_fulfill_fullfilled_dm(payload)
+	return {"ok": response.ok, "channel": response.channel, "ts": response.ts}
+
+
+@app.post("/custom")
+async def custom_message(
+	payload: CustomMessagePayload,
+	_: None = Depends(verify_bearer_token),
+) -> dict[str, Any]:
+	response = await slack_relay.send_custom_message(payload.target_id, payload.message)
+	return {"ok": response.ok, "channel": response.channel, "ts": response.ts}
 
 
 def main() -> None:

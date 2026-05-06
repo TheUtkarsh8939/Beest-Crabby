@@ -196,3 +196,212 @@ Behavior:
   - `:x: {reviewer_name} has been unimpressed by your project {project_name}.`
   - `Rejection Feedback: {feedback}`
 - The project name in the DM is hyperlinked to the project URL.
+
+## POST /fulfill_pending — notify order is pending
+
+This endpoint sends a direct message to a user to notify them that their order is pending review/processing.
+
+- Endpoint: `POST /fulfill_pending`
+- Required headers: `Authorization: Bearer {AUTH_BEARER_TOKEN}`
+- Required body JSON:
+  - `user_id` (string): Slack user ID of the order recipient (e.g. `U123ABCD`).
+  - `order_id` (string): Unique order identifier.
+  - `item_name` (string): Name of the ordered item.
+  - `qty` (string): Quantity (e.g., `2`).
+  - `cost` (string): Total cost with currency (e.g., `67 :alchemize: potions`).
+
+Example:
+
+```json
+{
+  "user_id": "U123ABCD",
+  "order_id": "1001",
+  "item_name": "Awesome Widget",
+  "qty": "2",
+  "cost": "67 :alchemize: potions"
+}
+```
+
+curl example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/fulfill_pending \
+  -H "Authorization: Bearer replace-me" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"user_id\": \"U123ABCD\",
+    \"order_id\": \"1001\",
+    \"item_name\": \"Awesome Widget\",
+    \"qty\": \"2\",
+    \"cost\": \"67 :alchemize: potions\"
+  }"
+```
+
+Behavior:
+- Sends a direct message to `user_id` with:
+  - Header: `:shopping_trolley: Order #{order_id} Update`
+  - Status: `*Your order status:* Pending`
+  - Order Details table (two-column layout):
+    - Order ID, Item, Quantity, Total
+  - Footer: `Thanking you for participating in Alchemize with us! :alchemize:`
+
+## POST /fulfill_approved — notify order is approved
+
+This endpoint sends a direct message to a user to notify them that their order has been approved and is pending fulfillment.
+
+- Endpoint: `POST /fulfill_approved`
+- Required headers: `Authorization: Bearer {AUTH_BEARER_TOKEN}`
+- Required body JSON:
+  - `user_id` (string): Slack user ID of the order recipient (e.g. `U123ABCD`).
+  - `order_id` (string): Unique order identifier.
+  - `item_name` (string): Name of the ordered item.
+  - `qty` (string): Quantity (e.g., `1`).
+  - `cost` (string): Total cost with currency (e.g., `120 :alchemize: potions`).
+
+Example:
+
+```json
+{
+  "user_id": "U123ABCD",
+  "order_id": "1002",
+  "item_name": "AI Widget",
+  "qty": "1",
+  "cost": "120 :alchemize: potions"
+}
+```
+
+curl example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/fulfill_approved \
+  -H "Authorization: Bearer replace-me" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"user_id\": \"U123ABCD\",
+    \"order_id\": \"1002\",
+    \"item_name\": \"AI Widget\",
+    \"qty\": \"1\",
+    \"cost\": \"120 :alchemize: potions\"
+  }"
+```
+
+Behavior:
+- Sends a direct message to `user_id` with:
+  - Header: `:white_check_mark: Order #{order_id} Approved!`
+  - Status: `*Your order status:* Approved. Pending Fulfillment.`
+  - Order Details table (two-column layout):
+    - Order ID, Item, Quantity, Total
+  - Footer: `We'll notify you when your order ships. Thank You for your patience! :alchemize:`
+
+## POST /fulfill_fullfilled — notify order is fulfilled
+
+This endpoint sends a direct message to a user to notify them that their order has been fulfilled and shipped.
+
+- Endpoint: `POST /fulfill_fullfilled`
+- Required headers: `Authorization: Bearer {AUTH_BEARER_TOKEN}`
+- Required body JSON:
+  - `user_id` (string): Slack user ID of the order recipient (e.g. `U123ABCD`).
+  - `order_id` (string): Unique order identifier.
+  - `item_name` (string): Name of the ordered item.
+  - `qty` (string): Quantity (e.g., `3`).
+  - `cost` (string): Total cost with currency (e.g., `250 :alchemize: potions`).
+  - `fulfilled_by` (string): Name of the person who fulfilled the order.
+  - `tracking_details` (string): Tracking information (e.g., `Tracking #TRACK-1003, expected delivery tomorrow`).
+
+Example:
+
+```json
+{
+  "user_id": "U123ABCD",
+  "order_id": "1003",
+  "item_name": "Shiny Relic",
+  "qty": "3",
+  "cost": "250 :alchemize: potions",
+  "fulfilled_by": "The Utkarsh",
+  "tracking_details": "Tracking #TRACK-1003, expected delivery tomorrow"
+}
+```
+
+curl example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/fulfill_fullfilled \
+  -H "Authorization: Bearer replace-me" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"user_id\": \"U123ABCD\",
+    \"order_id\": \"1003\",
+    \"item_name\": \"Shiny Relic\",
+    \"qty\": \"3\",
+    \"cost\": \"250 :alchemize: potions\",
+    \"fulfilled_by\": \"The Utkarsh\",
+    \"tracking_details\": \"Tracking #TRACK-1003, expected delivery tomorrow\"
+  }"
+```
+
+Behavior:
+- Sends a direct message to `user_id` with:
+  - Header: `:tada: Order #{order_id} Fulfilled!`
+  - Status: `*Your order status:* Pending`
+  - Order Details table (two-column layout):
+    - Order ID, Item, Quantity, Total
+    - Fulfilled By
+    - Tracking Details
+  - Footer: `Thanking you for participating in Alchemize with us! :alchemize:`
+
+## POST /custom — send a custom message to a user or channel
+
+This endpoint sends a custom message to either a direct message or a channel, determined by the target ID prefix.
+
+- Endpoint: `POST /custom`
+- Required headers: `Authorization: Bearer {AUTH_BEARER_TOKEN}`
+- Required body JSON:
+  - `target_id` (string): Slack user ID (starts with `U`, e.g. `U123ABCD`) for a DM, or channel ID (starts with `C`, e.g. `C12345678`) for a channel message.
+  - `message` (string): The message text in markdown format (1–4000 characters).
+
+Example (send to user):
+
+```json
+{
+  "target_id": "U123ABCD",
+  "message": "Hello! This is a custom message sent to your DM."
+}
+```
+
+Example (send to channel):
+
+```json
+{
+  "target_id": "C12345678",
+  "message": "Attention everyone: this is a custom channel message."
+}
+```
+
+curl example (DM):
+
+```bash
+curl -X POST http://127.0.0.1:8000/custom \
+  -H "Authorization: Bearer replace-me" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"target_id\": \"U123ABCD\",
+    \"message\": \"Hello from the API!\"
+  }"
+```
+
+curl example (channel):
+
+```bash
+curl -X POST http://127.0.0.1:8000/custom \
+  -H "Authorization: Bearer replace-me" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"target_id\": \"C12345678\",
+    \"message\": \"Important announcement to everyone!\"
+  }"
+```
+
+Behavior:
+- If `target_id` starts with `U`, opens or uses an existing DM channel with that user and posts the message.
+- If `target_id` starts with `C`, posts the message directly to the channel.
+- The message is rendered as markdown in a Slack section block.
