@@ -67,8 +67,7 @@ class ReviewAcceptPayload(BaseModel):
 	project_link: str = Field(min_length=1)
 	reviewer_id: str = Field(min_length=1, description="Slack user ID of reviewer")
 	feedback: str = Field(min_length=1, max_length=2000)
-	currencies: str = Field(min_length=1, description="Currency reward string e.g. '100 Gold, 50 Silver'")
-
+	currencies: str = Field(min_length=1, description="Comma-separated list of currencies rewarded, e.g. 'gold, silver'")
 
 class ReviewRejectPayload(BaseModel):
 	user_id: str = Field(min_length=1, description="Slack user ID of project submitter")
@@ -92,15 +91,20 @@ class FulfillFullfilledPayload(BaseModel):
 	item_name: str = Field(min_length=1)
 	qty: str = Field(min_length=1)
 	cost: str = Field(min_length=1)
-	fulfilled_by: str = Field(min_length=1)
-	tracking_details: str = Field(min_length=1)
 
 
 class CustomMessagePayload(BaseModel):
 	target_id: str = Field(min_length=1, description="Slack user ID or channel ID")
 	message: str = Field(min_length=1, max_length=4000)
 
-
+class PassedFraudReviewPayload(BaseModel):
+	user_id: str = Field(min_length=1, description="Slack user ID of order recipient")
+	project_name: str = Field(min_length=1)
+	project_link: str = Field(min_length=1)
+class FailedFraudReviewPayload(BaseModel):
+	user_id: str = Field(min_length=1, description="Slack user ID of order recipient")
+	project_name: str = Field(min_length=1)
+	project_link: str = Field(min_length=1)
 class SlackDispatchResult(BaseModel):
 	ok: bool
 	channel: str
@@ -257,7 +261,7 @@ class SlackRelay:
 		reviewer_avatar = user_profile.get("profile", {}).get("image_192") or user_profile.get("profile", {}).get("image_512", "")
 
 		# Post to ship channel spoofed as reviewer
-		channel_message = f"<@{user_id}> Your *{project_name}* has been reviewed. Please check your DM by <@U0B18V07GQ3> for details."
+		channel_message = f"<@{user_id}> Your *{project_name}* has been reviewed. Please check your DM by Me for details."
 		resp = await self.app.client.chat_postMessage(
 			channel=ship_channel,
 			text=channel_message,
@@ -283,7 +287,7 @@ class SlackRelay:
 		reviewer_avatar = user_profile.get("profile", {}).get("image_192") or user_profile.get("profile", {}).get("image_512", "")
 
 		# Post to ship channel spoofed as reviewer
-		channel_message = f"<@{user_id}> Your *{project_name}* has been reviewed. Please check your DM by <@U0B18V07GQ3> for details."
+		channel_message = f"<@{user_id}> Your *{project_name}* has been reviewed. Please check your DM by Me for details."
 		resp = await self.app.client.chat_postMessage(
 			channel=ship_channel,
 			text=channel_message,
@@ -310,14 +314,14 @@ class SlackRelay:
 				"type": "section",
 				"text": {
 					"type": "mrkdwn",
-					"text": f"Nice Master Cleric <@{reviewer_id}> has been impressed by your project *{project_name}*.",
+					"text": f"Nice work <@{reviewer_id}> has been impressed by your project *{project_name}*.",
 				},
 			},
 			{
 				"type": "section",
 				"text": {
 					"type": "mrkdwn",
-					"text": f"*Acceptance Feedback:* {feedback}\n\n*You get:* {currencies}",
+					"text": f"*Acceptance Feedback:* {feedback}\n\n",
 				},
 			},
 			{
@@ -326,7 +330,7 @@ class SlackRelay:
 			{
 				"type": "context",
 				"elements": [
-					{"type": "mrkdwn", "text": "Keep up the great work and continue to refine your alchemical skills! :alchemize:"},
+					{"type": "mrkdwn", "text": "Keep up the great work, your project would be fraud checked now and you should expect to receive your reward soon! :yay:"},
 				],
 			},
 			{
@@ -352,13 +356,13 @@ class SlackRelay:
 	async def send_fulfill_pending_dm(self, payload: FulfillOrderPayload) -> SlackDispatchResult:
 		return await self._send_order_update_dm(
 			user_id=payload.user_id,
-			headline=f":shopping_trolley: Order #{payload.order_id} Update",
+			headline=f":shopping_trolley: Order #{payload.order_id} Placed",
 			status_line="Pending",
 			order_id=payload.order_id,
 			item_name=payload.item_name,
 			qty=payload.qty,
 			cost=payload.cost,
-			closing_line="Thanking you for participating in Alchemize with us! :alchemize:",
+			closing_line="Thanks for being with us! Your order will be fullfilled soon. We'll notify you when it",
 			extra_lines=None,
 		)
 
@@ -387,21 +391,12 @@ class SlackRelay:
 				"text": {"type": "mrkdwn", "text": "*Your Order Status:* Your order has been fulfilled and is on its way! Make sure to show off what you do with it in <#C07UMRYJ1LH> when it arrives!"},
 			},
 			{
-				"type": "section",
-				"text": {"type": "mrkdwn", "text": "*Order Details:*"},
-				"fields": self._format_order_fields(payload.order_id, payload.item_name, payload.qty, payload.cost)
-				+ [
-					{"type": "mrkdwn", "text": f"*Fulfilled By:* {payload.fulfilled_by}"},
-					{"type": "mrkdwn", "text": f"*Tracking Details:* :package: {payload.tracking_details}"},
-				],
-			},
-			{
 				"type": "divider",
 			},
 			{
 				"type": "context",
 				"elements": [
-					{"type": "mrkdwn", "text": "Thanking you for participating in Alchemize with us! :alchemize:"},
+					{"type": "mrkdwn", "text": "Thank you for being a Beester!"},
 				],
 			},
 		]
@@ -428,7 +423,7 @@ class SlackRelay:
 				"type": "section",
 				"text": {
 					"type": "mrkdwn",
-					"text": f"Nice Master Cleric <@{reviewer_id}> has reviewed your project *{project_name}*."
+					"text": f"Nice <@{reviewer_id}> has reviewed your project *{project_name}*."
 				},
 			},
 			{
@@ -444,8 +439,96 @@ class SlackRelay:
 			{
 				"type": "context",
 				"elements": [
-					{"type": "mrkdwn", "text": "Don't give up! Review the feedback, make improvements, and ship again! :muscle:"},
+					{"type": "mrkdwn", "text": "Don't give up! Review the feedback, make improvements, and ship again! "},
 				],
+			},
+			{
+				"type": "actions",
+				"elements": [
+					{
+						"type": "button",
+						"text": {"type": "plain_text", "text": "View Project"},
+						"url": project_link,
+					},
+				],
+			},
+		]
+
+		resp = await self.app.client.chat_postMessage(
+			channel=channel,
+			text=f"{reviewer_name} reviewed {project_name}",
+			blocks=blocks,
+		)
+
+		return SlackDispatchResult(ok=bool(resp["ok"]), channel=channel, ts=resp.get("ts"))
+	async def send_fraud_review_accept(self, user_id: str, project_name: str, project_link: str, reviewer_name: str, reviewer_id: str, feedback: str) -> SlackDispatchResult:
+		"""Send detailed acceptance review to DM as mrkdwn blocks so it can be edited later."""
+		conv = await self.app.client.conversations_open(users=user_id)
+		channel = conv["channel"]["id"]
+
+		blocks = [
+			{
+				"type": "header",
+				"text": {"type": "plain_text", "text": ":white_check_mark: Great news! Your project has been accepted."},
+			},
+			{
+				"type": "section",
+				"text": {
+					"type": "mrkdwn",
+					"text": f"Nice Fraud Squad has reviewed your project *{project_name}*."
+				},
+			},
+			{
+				"type": "divider",
+			},
+			{
+				"type": "context",
+				"elements": [
+					{"type": "mrkdwn", "text": "Nice m8!"},
+				],
+			},
+			{
+				"type": "actions",
+				"elements": [
+					{
+						"type": "button",
+						"text": {"type": "plain_text", "text": "View Project"},
+						"url": project_link,
+					},
+				],
+			},
+		]
+
+		resp = await self.app.client.chat_postMessage(
+			channel=channel,
+			text=f"{reviewer_name} reviewed {project_name}",
+			blocks=blocks,
+		)
+
+		return SlackDispatchResult(ok=bool(resp["ok"]), channel=channel, ts=resp.get("ts"))
+	async def send_fraud_review_reject(self, user_id: str, project_name: str, project_link: str, reviewer_name: str, reviewer_id: str, feedback: str) -> SlackDispatchResult:
+		"""Send detailed rejection review to DM as mrkdwn blocks so it can be edited later."""
+		conv = await self.app.client.conversations_open(users=user_id)
+		channel = conv["channel"]["id"]
+
+		blocks = [
+			{
+				"type": "header",
+				"text": {"type": "plain_text", "text": ":x: Oof! You Commited Fraud"},
+			},
+			{
+				"type": "section",
+				"text": {
+					"type": "mrkdwn",
+					"text": f"Nice Fraud Squad has reviewed your project *{project_name}*."
+				},
+			},
+			{
+				"type": "section",
+				"text": {
+					"type": "mrkdwn",
+					"text": f"*You may get banned if you keep commiting fraud!* Please talk to @fraudsquad"
+				},
 			},
 			{
 				"type": "actions",
@@ -565,7 +648,7 @@ async def review_accept(
 		project_link=payload.project_link,
 		reviewer_id=payload.reviewer_id,
 		feedback=payload.feedback,
-		currencies=payload.currencies,
+		currencies=0,
 	)
 	return {"ok": review_response["ok"], "channel": review_response["channel"], "ts": review_response.get("ts")}
 
@@ -624,8 +707,35 @@ async def custom_message(
 ) -> dict[str, Any]:
 	response = await slack_relay.send_custom_message(payload.target_id, payload.message)
 	return {"ok": response.ok, "channel": response.channel, "ts": response.ts}
+@app.post("/fraud_review_accept")
+async def fraud_review_accept(
+	payload: PassedFraudReviewPayload,
+	_: None = Depends(verify_bearer_token),
+) -> dict[str, Any]:
+	response = await slack_relay.send_fraud_review_accept(
+		user_id=payload.user_id,
+		project_name=payload.project_name,
+		project_link=payload.project_link,
+		reviewer_name="Fraud Squad",
+		reviewer_id="U0000000000",
+		feedback="Your project has passed our fraud detection checks.",
+	)
+	return {"ok": response.ok, "channel": response.channel, "ts": response.ts}
 
-
+@app.post("/fraud_review_reject")
+async def fraud_review_reject(
+	payload: FailedFraudReviewPayload,
+	_: None = Depends(verify_bearer_token),
+) -> dict[str, Any]:
+	response = await slack_relay.send_fraud_review_reject(
+		user_id=payload.user_id,
+		project_name=payload.project_name,
+		project_link=payload.project_link,
+		reviewer_name="Fraud Squad",
+		reviewer_id="U0000000000",
+		feedback="Your project has been flagged for potential fraud. Please contact @fraudsquad for more information.",
+	)
+	return {"ok": response.ok, "channel": response.channel, "ts": response.ts}
 def main() -> None:
 	uvicorn.run(app, host=settings.api_host, port=settings.api_port, reload=False)
 
